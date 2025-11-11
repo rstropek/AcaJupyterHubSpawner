@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "acaspawner"
+version = "1.0.0"
+description = "Custom AcaSpawner for JupyterHub"
+authors = [
+  { name = "Rainer Stropek", email = "rainer@software-architects.at" }
+]
+requires-python = ">=3.10"
+
+dependencies = [
+  "jupyterhub>=5.0.0",
+]
+
+[tool.setuptools]
+packages = ["acaspawner"]

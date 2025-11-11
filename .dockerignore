@@ -1,0 +1,9 @@
+.env
+*_test.py
+azure_aca_*.py
+create*.py
+Dockerfile
+docker*.py
+Pip*
+spaweners.md.txt
+.gitignore

@@ -1,0 +1,84 @@
+#!/bin/bash
+
+# Source environment variables from .env file
+if [ -f ../.env ]; then
+    export $(cat ../.env | grep -v '^#' | xargs)
+else
+    echo "Warning: .env file not found. Please create it with your Azure configuration."
+    exit 1
+fi
+
+NAME=jupyterhub
+
+# Step 1: Create/start the Container App
+echo "Creating container app..."
+az containerapp create \
+  --name $NAME \
+  --resource-group "$AZURE_RESOURCE_GROUP" \
+  --environment "$AZURE_ACA_ENVIRONMENT_NAME" \
+  --image "$AZURE_ACR_SERVER/jupyterhub/jupyterhub:latest" \
+  --command "jupyterhub" \
+  --target-port 8000 \
+  --ingress external \
+  --min-replicas 1 \
+  --max-replicas 1 \
+  --cpu 1.0 \
+  --memory 2.0Gi \
+  --env-vars \
+    AZURE_TENANT_ID="$AZURE_TENANT_ID" \
+    AZURE_CLIENT_ID="$AZURE_CLIENT_ID" \
+    AZURE_CLIENT_SECRET="$AZURE_CLIENT_SECRET" \
+    AZURE_SUBSCRIPTION_ID="$AZURE_SUBSCRIPTION_ID" \
+    AZURE_RESOURCE_GROUP="$AZURE_RESOURCE_GROUP" \
+    AZURE_ACA_ENVIRONMENT_NAME="$AZURE_ACA_ENVIRONMENT_NAME" \
+    AZURE_REGION="$AZURE_REGION" \
+    AZURE_ACR_SERVER="$AZURE_ACR_SERVER" \
+    AZURE_ACR_IDENTITY="$AZURE_ACR_IDENTITY" \
+  --registry-server "$AZURE_ACR_SERVER" \
+  --registry-identity "$AZURE_ACR_IDENTITY"
+
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to create container app"
+    exit 1
+fi
+
+# Step 2: Query the application FQDN
+echo "Querying application FQDN..."
+FQDN=$(az containerapp show \
+  --name $NAME \
+  --resource-group "$AZURE_RESOURCE_GROUP" \
+  --query "properties.configuration.ingress.fqdn" \
+  --output tsv)
+
+if [ -z "$FQDN" ]; then
+    echo "Error: Failed to retrieve FQDN"
+    exit 1
+fi
+
+echo "Retrieved FQDN: $FQDN"
+# JUPYTERHUB_HUB_CONNECT_URL="https://$FQDN/"
+JUPYTERHUB_HUB_CONNECT_URL="http://jupyterhub:8000/"
+
+# Step 3: Update the container app with the correct JUPYTERHUB_HUB_CONNECT_URL
+echo "Updating container app with JUPYTERHUB_HUB_CONNECT_URL: $JUPYTERHUB_HUB_CONNECT_URL"
+az containerapp update \
+  --name $NAME \
+  --resource-group "$AZURE_RESOURCE_GROUP" \
+  --set-env-vars \
+    AZURE_TENANT_ID="$AZURE_TENANT_ID" \
+    AZURE_CLIENT_ID="$AZURE_CLIENT_ID" \
+    AZURE_CLIENT_SECRET="$AZURE_CLIENT_SECRET" \
+    AZURE_SUBSCRIPTION_ID="$AZURE_SUBSCRIPTION_ID" \
+    AZURE_RESOURCE_GROUP="$AZURE_RESOURCE_GROUP" \
+    AZURE_ACA_ENVIRONMENT_NAME="$AZURE_ACA_ENVIRONMENT_NAME" \
+    AZURE_REGION="$AZURE_REGION" \
+    AZURE_ACR_SERVER="$AZURE_ACR_SERVER" \
+    AZURE_ACR_IDENTITY="$AZURE_ACR_IDENTITY" \
+    JUPYTERHUB_HUB_CONNECT_URL="$JUPYTERHUB_HUB_CONNECT_URL"
+
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to update container app with JUPYTERHUB_HUB_CONNECT_URL"
+    exit 1
+fi
+
+echo "Container app successfully created and configured with FQDN: $JUPYTERHUB_HUB_CONNECT_URL"

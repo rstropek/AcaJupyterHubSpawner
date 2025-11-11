@@ -1,0 +1,20 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[scripts]
+dev = "python azure_aca_demo_async.py"
+
+[packages]
+azure-mgmt-appcontainers = "*"
+azure-identity = "*"
+"azure.mgmt.msi" = "*"
+aiohttp = "*"
+jupyterhub = "*"
+traitlets = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.12"

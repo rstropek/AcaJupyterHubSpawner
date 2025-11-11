@@ -1,0 +1,139 @@
+# Switch to correct subscription
+# az login --use-device-code
+# az account set --subscription ...
+# az account show --output table
+
+CURRENT_DIR=$(basename "$PWD")
+if [ "$CURRENT_DIR" != "DevOps" ]; then
+    echo "Error: This script must be run from the DevOps directory"
+    exit 1
+fi
+
+# Source environment variables from .env file
+if [ -f ../.env ]; then
+    export $(cat ../.env | grep -v '^#' | xargs)
+else
+    echo "Warning: ../.env file not found. Please create it with your Azure configuration."
+    exit 1
+fi
+
+RG=JupyterHubACA2
+LOCATION=swedencentral
+PROJECT_NAME=JupyterHubACA
+STAGE=dev
+ADMIN_PRINCIPAL_ID=81686fe2-9ab8-4640-862c-af20fca5b6ed
+AZURE_OPENAI_ENDPOINT=https://oai-rstropek-sweden.openai.azure.com/
+
+# Deploy Managed Identity
+DEPLOY_RESULT=$(az deployment group create \
+    --resource-group $RG \
+    --name Deployment-$(date +"%Y-%m-%dT%H-%M-%S") \
+    --template-file managed-identity.bicep \
+    --parameters \
+        location=$LOCATION \
+        projectName=$PROJECT_NAME \
+        stage=$STAGE \
+        tags="{\"Project\":\"$PROJECT_NAME\", \"Stage\":\"$STAGE\"}" \
+    | jq .properties.outputs)
+MANAGED_ID_NAME=$(echo $DEPLOY_RESULT | jq -r .managedIdName.value)
+MANAGED_ID=$(echo $DEPLOY_RESULT | jq -r .managedIdPrincipalId.value)
+MANAGED_ID_CLIENT_ID=$(echo $DEPLOY_RESULT | jq -r .managedIdClientId.value)
+echo "Managed Identity Name: $MANAGED_ID_NAME"
+echo "Managed Identity Principal ID: $MANAGED_ID"
+echo "Managed Identity Client ID: $MANAGED_ID_CLIENT_ID"
+
+DEPLOY_RESULT=$(az deployment group create \
+    --resource-group $RG \
+    --name Deployment-$(date +"%Y-%m-%dT%H-%M-%S") \
+    --template-file main.bicep \
+    --parameters \
+        location=$LOCATION \
+        projectName=$PROJECT_NAME \
+        stage=$STAGE \
+        tags="{\"Project\":\"$PROJECT_NAME\", \"Stage\":\"$STAGE\"}" \
+        adminPrincipalId=$ADMIN_PRINCIPAL_ID \
+        managedIdPrincipalId=$MANAGED_ID \
+    | jq .properties.outputs)
+REGISTRY_NAME=$(echo $DEPLOY_RESULT | jq -r .registryName.value)
+WORKSPACE_NAME=$(echo $DEPLOY_RESULT | jq -r .workspaceName.value)
+WORKSPACE_ID=$(echo $DEPLOY_RESULT | jq -r .workspaceId.value)
+ENVIRONMENT_NAME=$(echo $DEPLOY_RESULT | jq -r .environmentName.value)
+echo "Container Registry Name: $REGISTRY_NAME"
+echo "Log Analytics Workspace Name: $WORKSPACE_NAME"
+echo "Log Analytics Workspace ID: $WORKSPACE_ID"
+echo "Container App Environment Name: $ENVIRONMENT_NAME"
+
+# Now you can build and push image to ACR
+CONTAINER_IMAGE_NAME=jupyterhub/jupyterhub
+CONTAINER_IMAGE_VERSION=0.1.1
+cd ..
+az acr build --image $CONTAINER_IMAGE_NAME:$CONTAINER_IMAGE_VERSION --registry $REGISTRY_NAME .
+cd DevOps
+az acr import \
+  --name $REGISTRY_NAME \
+  --source docker.io/library/jupyterhub/singleuser:5.4 \
+  --image jupyterhub/singleuser:5.4
+
+NAME=jupyterhub
+AZURE_ACR_IDENTITY=/subscriptions/$AZURE_SUBSCRIPTION_ID/resourcegroups/$RG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$MANAGED_ID_NAME
+AZURE_ACR_SERVER=$REGISTRY_NAME.azurecr.io
+
+# Step 1: Create/start the Container App
+echo "Creating container app..."
+az containerapp create \
+  --name $NAME \
+  --resource-group "$RG" \
+  --environment "$ENVIRONMENT_NAME" \
+  --image "$AZURE_ACR_SERVER/$CONTAINER_IMAGE_NAME:$CONTAINER_IMAGE_VERSION" \
+  --command "jupyterhub" \
+  --target-port 8000 \
+  --ingress external \
+  --min-replicas 1 \
+  --max-replicas 1 \
+  --cpu 1.0 \
+  --memory 2.0Gi \
+  --env-vars \
+    AZURE_TENANT_ID="$AZURE_TENANT_ID" \
+    AZURE_CLIENT_ID="$AZURE_CLIENT_ID" \
+    AZURE_CLIENT_SECRET="$AZURE_CLIENT_SECRET" \
+    AZURE_SUBSCRIPTION_ID="$AZURE_SUBSCRIPTION_ID" \
+    AZURE_RESOURCE_GROUP="$RG" \
+    AZURE_ACA_ENVIRONMENT_NAME="$ENVIRONMENT_NAME" \
+    AZURE_REGION="$LOCATION" \
+    AZURE_ACR_SERVER="$AZURE_ACR_SERVER" \
+    AZURE_ACR_IDENTITY="$AZURE_ACR_IDENTITY" \
+    JUPYTERHUB_HUB_CONNECT_URL="https://toreplace.com" \
+  --registry-server "$AZURE_ACR_SERVER" \
+  --registry-identity "$AZURE_ACR_IDENTITY"
+
+# Step 2: Query the application FQDN
+echo "Querying application FQDN..."
+FQDN=$(az containerapp show \
+  --name $NAME \
+  --resource-group "$AZURE_RESOURCE_GROUP" \
+  --query "properties.configuration.ingress.fqdn" \
+  --output tsv)
+echo $FQDN
+
+echo "Retrieved FQDN: $FQDN"
+JUPYTERHUB_HUB_CONNECT_URL="https://$FQDN/"
+# JUPYTERHUB_HUB_CONNECT_URL="http://jupyterhub:8000/"
+
+# Step 3: Update the container app with the correct JUPYTERHUB_HUB_CONNECT_URL
+echo "Updating container app with JUPYTERHUB_HUB_CONNECT_URL: $JUPYTERHUB_HUB_CONNECT_URL"
+az containerapp update \
+  --name $NAME \
+  --resource-group "$AZURE_RESOURCE_GROUP" \
+  --set-env-vars \
+    AZURE_TENANT_ID="$AZURE_TENANT_ID" \
+    AZURE_CLIENT_ID="$AZURE_CLIENT_ID" \
+    AZURE_CLIENT_SECRET="$AZURE_CLIENT_SECRET" \
+    AZURE_SUBSCRIPTION_ID="$AZURE_SUBSCRIPTION_ID" \
+    AZURE_RESOURCE_GROUP="$RG" \
+    AZURE_ACA_ENVIRONMENT_NAME="$ENVIRONMENT_NAME" \
+    AZURE_REGION="$LOCATION" \
+    AZURE_ACR_SERVER="$AZURE_ACR_SERVER" \
+    AZURE_ACR_IDENTITY="$AZURE_ACR_IDENTITY" \
+    JUPYTERHUB_HUB_CONNECT_URL="$JUPYTERHUB_HUB_CONNECT_URL"
+
+echo "Container app successfully created and configured with FQDN: $JUPYTERHUB_HUB_CONNECT_URL"
