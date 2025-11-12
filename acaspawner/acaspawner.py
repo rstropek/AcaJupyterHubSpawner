@@ -10,6 +10,9 @@ from azure.mgmt.appcontainers.models import (
     ContainerResources,
     RegistryCredentials,
     EnvironmentVar,
+    ManagedServiceIdentity,
+    ManagedServiceIdentityType,
+    UserAssignedIdentity
 )
 from jupyterhub.spawner import Spawner
 from traitlets import default, Unicode, Float, Int
@@ -227,6 +230,8 @@ class AcaSpawner(Spawner):
                     else:
                         self.log.info("Environment variable %s: %s", key, hub_env[key])
             
+            self.log.info("Using ACR server %s with identity %s", self.acr_server, self.acr_identity)
+
             # Add Azure environment variables
             azure_forward = {
                 k: v for k, v in os.environ.items() if k.startswith("AZURE_")
@@ -236,6 +241,12 @@ class AcaSpawner(Spawner):
             app = ContainerApp(
                 managed_environment_id=environment_id,
                 location=self.region,
+                identity=ManagedServiceIdentity(
+                    type=ManagedServiceIdentityType.USER_ASSIGNED,
+                    user_assigned_identities={
+                        self.acr_identity: UserAssignedIdentity()
+                    }
+                ),
                 configuration=Configuration(
                     ingress=Ingress(
                         external=True,
@@ -275,8 +286,8 @@ class AcaSpawner(Spawner):
             else:
                 raise Exception("Failed to get ACA FQDN")
 
-            #return f"https://{app.configuration.ingress.fqdn}"
-            return f"http://{self.aca_name}:8888"
+            return f"https://{app.configuration.ingress.fqdn}"
+            #return f"http://{self.aca_name}:8888"
 
         except Exception as e:
             self.clear_state()
