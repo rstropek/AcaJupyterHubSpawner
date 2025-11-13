@@ -9,14 +9,6 @@ if [ "$CURRENT_DIR" != "DevOps" ]; then
     exit 1
 fi
 
-# Source environment variables from .env file
-if [ -f ../.env ]; then
-    export $(cat ../.env | grep -v '^#' | xargs)
-else
-    echo "Warning: ../.env file not found. Please create it with your Azure configuration."
-    exit 1
-fi
-
 RG=JupyterHubACA2
 LOCATION=swedencentral
 PROJECT_NAME=JupyterHubACA
@@ -42,6 +34,8 @@ echo "Managed Identity Name: $MANAGED_ID_NAME"
 echo "Managed Identity Principal ID: $MANAGED_ID"
 echo "Managed Identity Client ID: $MANAGED_ID_CLIENT_ID"
 
+# ⚠️ NOTE that the Managed Identity must have Contributor role in the resource group
+
 DEPLOY_RESULT=$(az deployment group create \
     --resource-group $RG \
     --name Deployment-$(date +"%Y-%m-%dT%H-%M-%S") \
@@ -65,7 +59,7 @@ echo "Container App Environment Name: $ENVIRONMENT_NAME"
 
 # Now you can build and push image to ACR
 CONTAINER_IMAGE_NAME=jupyterhub/jupyterhub
-CONTAINER_IMAGE_VERSION=0.1.3
+CONTAINER_IMAGE_VERSION=0.1.6
 cd ..
 az acr build --image $CONTAINER_IMAGE_NAME:$CONTAINER_IMAGE_VERSION --registry $REGISTRY_NAME .
 cd DevOps
@@ -75,7 +69,9 @@ az acr import \
   --image jupyterhub/singleuser:5.4
 
 NAME=jupyterhub
-# Don't forget that this managed identity must have Contributor role in the resource group
+ACCOUNT=$(az account show)
+AZURE_SUBSCRIPTION_ID=$(echo $ACCOUNT | jq .id -r)
+AZURE_TENANT_ID=$(echo $ACCOUNT | jq .tenantId -r)
 AZURE_ACR_IDENTITY=/subscriptions/$AZURE_SUBSCRIPTION_ID/resourcegroups/$RG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$MANAGED_ID_NAME
 AZURE_ACR_SERVER=$REGISTRY_NAME.azurecr.io
 
@@ -95,8 +91,7 @@ az containerapp create \
   --memory 2.0Gi \
   --env-vars \
     AZURE_TENANT_ID="$AZURE_TENANT_ID" \
-    AZURE_CLIENT_ID="$AZURE_CLIENT_ID" \
-    AZURE_CLIENT_SECRET="$AZURE_CLIENT_SECRET" \
+    AZURE_CLIENT_ID="$MANAGED_ID_CLIENT_ID" \
     AZURE_SUBSCRIPTION_ID="$AZURE_SUBSCRIPTION_ID" \
     AZURE_RESOURCE_GROUP="$RG" \
     AZURE_ACA_ENVIRONMENT_NAME="$ENVIRONMENT_NAME" \
@@ -111,7 +106,7 @@ az containerapp create \
 echo "Querying application FQDN..."
 FQDN=$(az containerapp show \
   --name $NAME \
-  --resource-group "$AZURE_RESOURCE_GROUP" \
+  --resource-group "$RG" \
   --query "properties.configuration.ingress.fqdn" \
   --output tsv)
 echo $FQDN
@@ -124,11 +119,10 @@ JUPYTERHUB_HUB_CONNECT_URL="https://$FQDN/"
 echo "Updating container app with JUPYTERHUB_HUB_CONNECT_URL: $JUPYTERHUB_HUB_CONNECT_URL"
 az containerapp update \
   --name $NAME \
-  --resource-group "$AZURE_RESOURCE_GROUP" \
+  --resource-group "$RG" \
   --set-env-vars \
     AZURE_TENANT_ID="$AZURE_TENANT_ID" \
-    AZURE_CLIENT_ID="$AZURE_CLIENT_ID" \
-    AZURE_CLIENT_SECRET="$AZURE_CLIENT_SECRET" \
+    AZURE_CLIENT_ID="$MANAGED_ID_CLIENT_ID" \
     AZURE_SUBSCRIPTION_ID="$AZURE_SUBSCRIPTION_ID" \
     AZURE_RESOURCE_GROUP="$RG" \
     AZURE_ACA_ENVIRONMENT_NAME="$ENVIRONMENT_NAME" \

@@ -355,8 +355,8 @@ class AcaSpawner(Spawner):
 
     def get_client(self):
         credential = DefaultAzureCredential(
-            exclude_environment_credential=False,
-            exclude_managed_identity_credential=True,
+            exclude_environment_credential=True,
+            exclude_managed_identity_credential=False,
             exclude_shared_token_cache_credential=True,
             exclude_visual_studio_credential=True,
             exclude_visual_studio_code_credential=True,
