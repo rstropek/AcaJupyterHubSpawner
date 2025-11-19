@@ -161,7 +161,8 @@ class AcaSpawner(Spawner):
     @default("hub_connect_url")
     def _default_hub_connect_url(self):
         # Return JUPYTERHUB_HUB_CONNECT_URL as the base hub URL
-        hub_connect_url = os.getenv("JUPYTERHUB_HUB_CONNECT_URL")
+        #hub_connect_url = os.getenv("JUPYTERHUB_HUB_CONNECT_URL")
+        hub_connect_url = 'http://jupyterhub/'
         return hub_connect_url
 
     aca_running_name = Unicode(allow_none=True)
@@ -191,12 +192,12 @@ class AcaSpawner(Spawner):
             credential, client = self.get_client()
             environment_id = f"/subscriptions/{self.subscription_id}/resourceGroups/{self.resource_group}/providers/Microsoft.App/managedEnvironments/{self.aca_environment_name}"
             self.log.info(
+
                 "Creating ACA %s in environment %s", self.aca_name, environment_id
             )
             hub_env = self.get_env()
             
-            # The hub_connect_url should be the external FQDN that containers can reach
-            api_url = self.hub_connect_url.rstrip('/') + '/hub/api'
+            api_url =  'http://jupyterhub/hub/api'
             hub_env["JUPYTERHUB_API_URL"] = api_url
             self.log.info("Setting JUPYTERHUB_API_URL to: %s", api_url)
             
@@ -209,6 +210,7 @@ class AcaSpawner(Spawner):
                     "--ip=0.0.0.0",
                     "--port=8888",
                     "--ServerApp.trust_xheaders=True",
+                    "--ServerApp.disable_check_xsrf=True",
                     "--ServerApp.allow_remote_access=True",
                     "--ServerApp.base_url="
                     + hub_env.get("JUPYTERHUB_SERVICE_PREFIX", "/"),
@@ -249,7 +251,7 @@ class AcaSpawner(Spawner):
                 ),
                 configuration=Configuration(
                     ingress=Ingress(
-                        external=True,
+                        external=False,
                         target_port=self.target_port,
                         allow_insecure=False,
                         traffic=[{"weight": 100, "latest_revision": True}],
@@ -286,8 +288,7 @@ class AcaSpawner(Spawner):
             else:
                 raise Exception("Failed to get ACA FQDN")
 
-            return f"https://{app.configuration.ingress.fqdn}"
-            #return f"http://{self.aca_name}:8888"
+            return f"http://{self.aca_name}"
 
         except Exception as e:
             self.clear_state()

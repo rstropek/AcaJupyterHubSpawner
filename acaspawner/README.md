@@ -15,6 +15,21 @@ The ACA Spawner (`acaspawner`) enables JupyterHub to dynamically create and mana
 - **State management**: Persists container app state across JupyterHub restarts
 - **Clean shutdown**: Automatically removes container apps when users stop their servers
 
+## Next Problem to Solve
+
+ - The proxy needs to set the `Host` header to the name of the single-server container-app, because the Azure proxies apparently need that.
+ - The JupyterServer (JupyterLab) checks, when establishing a WebSocket connection, whether the Host header matches the expected origin, which it doesn't
+
+```terminaloutput
+Blocking Cross Origin API request for /user/marcus/api/events/subscribe.  Origin: https://jupyterhub.mangoflower-dfe0d019.swedencentral.azurecontainerapps.io, Host: aca74ec25afd45e4f3f8f8b3f412c9c3
+```
+
+A solution is for sure possible and likely not complex, but not as straightforward as one might think. 
+Ultimately, the single-server needs to be made aware of what its front-url is. 
+Approaches are:
+  - setting the "right" headers in the configurable http proxy
+  - configuring the front-url on startup 
+
 ## Requirements
 
 - Python 3.7+

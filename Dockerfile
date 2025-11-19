@@ -11,3 +11,5 @@ COPY jupyterhub_config.py /srv/jupyterhub/jupyterhub_config.py
 RUN mkdir -p /srv/jupyterhub && \
     openssl rand -hex 32 > /srv/jupyterhub/cookie_secret && \
     chmod 600 /srv/jupyterhub/cookie_secret
+
+COPY configproxy.js /usr/local/lib/node_modules/configurable-http-proxy/lib/

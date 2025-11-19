@@ -24,3 +24,6 @@ c.JupyterHub.cookie_options = {
     "Secure": False,      # Set to False for internal HTTP communication
     "SameSite": "Lax",    # works well for same-site navigations
 }
+
+c.ConfigurableHTTPProxy.log_level = 'debug'
+

@@ -2,7 +2,7 @@
 # az login --use-device-code
 # az account set --subscription ...
 # az account show --output table
-
+set -x
 CURRENT_DIR=$(basename "$PWD")
 if [ "$CURRENT_DIR" != "DevOps" ]; then
     echo "Error: This script must be run from the DevOps directory"
@@ -12,9 +12,9 @@ fi
 RG=JupyterHubACA2
 LOCATION=swedencentral
 PROJECT_NAME=JupyterHubACA
-STAGE=dev
-ADMIN_PRINCIPAL_ID=81686fe2-9ab8-4640-862c-af20fca5b6ed
-AZURE_OPENAI_ENDPOINT=https://oai-rstropek-sweden.openai.azure.com/
+STAGE=devAtUZH
+ADMIN_PRINCIPAL_ID=e58b7b1e-5992-49f6-83bf-3d2e2a8c4e97
+# 81686fe2-9ab8-4640-862c-af20fca5b6ed
 
 # Deploy Managed Identity
 DEPLOY_RESULT=$(az deployment group create \
